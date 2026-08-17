@@ -123,7 +123,20 @@ main{padding:var(--pad);max-width:640px;margin:0 auto}
   box-shadow:inset 0 1px 0 rgba(255,255,255,.07), inset 0 -8px 18px rgba(0,0,0,.28);
   display:grid;place-items:center;text-align:center;padding:6px;
 }
-.pocket img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.pocket img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:filter .25s}
+.pocket:not(.on) img{filter:grayscale(1) contrast(.92) brightness(.62)}
+.pocket .badge{
+  position:absolute;left:4px;top:4px;z-index:2;background:rgba(16,23,40,.86);
+  color:var(--dim);font-size:9px;font-weight:700;letter-spacing:.04em;
+  padding:2px 5px;border-radius:5px;text-transform:uppercase;
+}
+.pocket.on .badge{color:var(--have)}
+.pocket .cap{
+  position:absolute;left:0;right:0;bottom:0;z-index:2;padding:4px 3px 3px;
+  background:linear-gradient(transparent,rgba(10,14,26,.92));
+  font-size:9.5px;line-height:1.15;color:var(--dim);
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+}
 .pocket .num{
   font-size:clamp(20px,7vw,30px);font-weight:800;letter-spacing:-.04em;
   font-variant-numeric:tabular-nums;color:rgba(255,255,255,.16);line-height:1;
@@ -182,6 +195,14 @@ input:focus-visible,button:focus-visible,.pocket:focus-visible{outline:2px solid
 .row .m b{display:block;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .m small{color:var(--dim);font-size:12.5px}
 .row .tick{color:var(--have);font-size:18px}
+.row .chk{
+  width:23px;height:23px;flex:none;border-radius:7px;border:1.5px solid var(--edge);
+  display:grid;place-items:center;font-size:13px;color:transparent;
+}
+.row.sel .chk{background:var(--have);border-color:var(--have);color:#0b1a12}
+.sheet-ft{padding:12px var(--pad);border-top:1px solid var(--edge);flex:none}
+.sheet-ft .btn{margin-top:0}
+.hero .ver{margin-top:9px;font-size:11.5px;color:var(--dim);letter-spacing:.05em;font-variant-numeric:tabular-nums}
 .note{color:var(--dim);font-size:13px;line-height:1.5;margin:10px 0 0}
 .toast{
   position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;
@@ -213,7 +234,7 @@ input:focus-visible,button:focus-visible,.pocket:focus-visible{outline:2px solid
 
 <script>
 'use strict';
-const APP_VERSION='2026.08.17-2';
+const APP_VERSION='2026.08.17-3';
 const IMG_BASE='https://images.pokemontcg.io/';
 const PER_PAGE=9;
 const $=s=>document.querySelector(s);
@@ -276,11 +297,45 @@ function paint(node,setId,number){
 
 /* ================= dados derivados ================= */
 function cardsOf(dexNum){return BY_DEX.get(dexNum)||[];}
+let DEXNAME=new Map();
+function dexName(n){return DEXNAME.get(n)||('#'+n);}
 function setLabel(c){const s=SETS[c[2]];return s?s[0]+' · '+c[3]:c[3];}
-function binderCards(b){
-  const out=[];const seen=new Set();
-  for(const n of b.pokemon)for(const c of cardsOf(n))if(!seen.has(c[0])){seen.add(c[0]);out.push(c);}
-  return out;
+/* Um binder guarda espacos (slots), nao Pokemon:
+     {s:id, p:numero da pokedex, c:carta escolhida|null, a:1 se "qualquer versao"} */
+function slotOwned(b,sl){return sl.a?!!sl.c:!!b.owned[sl.s];}
+function binderSlots(b){return b.slots||[];}
+function binderStats(b){
+  const sl=binderSlots(b);
+  return {total:sl.length,owned:sl.filter(x=>slotOwned(b,x)).length};
+}
+function addSlots(b,dexNum,cards,anyMode){
+  b.seq=b.seq||0;
+  if(anyMode){b.slots.push({s:++b.seq,p:dexNum,c:null,a:1});return 1;}
+  const have=new Set(b.slots.filter(x=>!x.a).map(x=>x.c));
+  let n=0;
+  for(const c of cards){if(have.has(c[0]))continue;b.slots.push({s:++b.seq,p:dexNum,c:c[0],a:0});n++;}
+  return n;
+}
+function dexNumsIn(b){
+  const seen=new Map();
+  for(const sl of binderSlots(b))if(!seen.has(sl.p))seen.set(sl.p,0);
+  for(const sl of binderSlots(b))seen.set(sl.p,seen.get(sl.p)+1);
+  return [...seen.entries()];
+}
+/* migra binders criados no formato antigo (lista de pokemon + owned por carta) */
+function migrate(){
+  let changed=false;
+  for(const b of S.binders){
+    if(b.slots)continue;
+    changed=true;b.seq=0;b.slots=[];
+    const oldOwned=b.owned||{};b.owned={};
+    for(const n of (b.pokemon||[]))for(const c of cardsOf(n)){
+      const sl={s:++b.seq,p:n,c:c[0],a:0};b.slots.push(sl);
+      if(oldOwned[c[0]])b.owned[sl.s]=1;
+    }
+    delete b.pokemon;
+  }
+  return changed;
 }
 
 /* ================= navegacao ================= */
@@ -306,7 +361,7 @@ function menu(v){
 
   const dexHave=Object.keys(S.dex).length;
   let cards=0,cardsHave=0;
-  for(const b of S.binders){const cs=binderCards(b);cards+=cs.length;cardsHave+=cs.filter(c=>b.owned[c[0]]).length;}
+  for(const b of S.binders){const t=binderStats(b);cards+=t.total;cardsHave+=t.owned;}
 
   const hero=el('div','hero');
   hero.appendChild(el('div','eyebrow','Coleção Pokémon'));
@@ -317,6 +372,7 @@ function menu(v){
   st.innerHTML=`<b>${dexHave}</b> de 1025 Pokémon na Pokédex`
     +(S.binders.length?` · <b>${cardsHave}</b> de ${cards} cartas em ${S.binders.length} binder${S.binders.length>1?'s':''}`:'');
   hero.appendChild(st);
+  hero.appendChild(el('div','ver','versão '+APP_VERSION));
   v.appendChild(hero);
 
   const marks=dexHave+cardsHave;
@@ -364,10 +420,10 @@ function binderList(v){
     have+' de 1025 Pokémon',have/1025,true,()=>go({name:'dex'})));
 
   for(const b of S.binders){
-    const cs=binderCards(b),n=cs.filter(c=>b.owned[c[0]]).length;
+    const t=binderStats(b);
     shelf.appendChild(binderRow(b.name,
-      cs.length?`${n} de ${cs.length} cartas`:'Vazio — toque para adicionar um Pokémon',
-      cs.length?n/cs.length:0,false,()=>go({name:'binder',id:b.id})));
+      t.total?`${t.owned} de ${t.total} espaços`:'Vazio — toque para adicionar um Pokémon',
+      t.total?t.owned/t.total:0,false,()=>go({name:'binder',id:b.id})));
   }
   v.appendChild(shelf);
 
@@ -399,11 +455,11 @@ function binderView(v,id){
   // monta os slots
   let slots;
   if(isDex) slots=DEX.map(([n,nm])=>({dex:n,name:nm,on:!!S.dex[n],key:S.dex[n]}));
-  else slots=binderCards(b).map(c=>({card:c,on:!!b.owned[c[0]],key:c[0]}));
+  else slots=binderSlots(b).map(sl=>({sl,on:slotOwned(b,sl)}));
 
   const total=slots.length,owned=slots.filter(s=>s.on).length;
   $('#bar').style.width=(total?owned/total*100:0).toFixed(1)+'%';
-  $('#cnt').textContent=`${owned} de ${total}`+(isDex?' Pokémon':' cartas');
+  $('#cnt').textContent=`${owned} de ${total}`+(isDex?' Pokémon':' espaços');
 
   // filtro
   const chips=el('div','chips');
@@ -434,11 +490,7 @@ function binderView(v,id){
   if(!isDex){
     const add=el('button','newb','+  Adicionar Pokémon');
     add.style.marginTop='16px';
-    add.onclick=()=>pickPokemon(n=>{
-      if(b.pokemon.includes(n))return toast('Esse Pokémon já está no binder');
-      b.pokemon.push(n);save();closeSheet();viewState.page=0;render();
-      toast(`${cardsOf(n).length} cartas adicionadas`);
-    });
+    add.onclick=()=>pickPokemon(n=>howToCollect(b,n));
     v.appendChild(add);
   }
 }
@@ -446,6 +498,7 @@ function binderView(v,id){
 function pocket(s,isDex,b){
   const p=el('button','pocket'+(s.on?' on':''));
   p.setAttribute('aria-pressed',s.on);
+
   if(isDex){
     p.setAttribute('aria-label',`#${s.dex} ${s.name}`);
     if(s.on&&s.key){
@@ -455,16 +508,41 @@ function pocket(s,isDex,b){
       p.appendChild(el('div','num',String(s.dex).padStart(3,'0')));
       p.appendChild(el('div','nm',s.name));
     }
-    p.onclick=()=>dexSlot(s);
-  }else{
-    paint(p,s.card[2],s.card[3]);
-    p.setAttribute('aria-label',s.card[1]+' — '+setLabel(s.card));
-    if(!s.on)p.style.opacity='.45';
-    p.onclick=()=>{
-      if(b.owned[s.key])delete b.owned[s.key];else b.owned[s.key]=1;
-      save();render();
-    };
+    p.onclick=()=>versionSheet({
+      title:`#${String(s.dex).padStart(3,'0')} ${s.name}`,dex:s.dex,current:s.key,
+      onPick:k=>{S.dex[s.dex]=k;},onClear:()=>{delete S.dex[s.dex];},
+      clearLabel:'Desmarcar este Pokémon'
+    });
+    return p;
   }
+
+  const sl=s.sl,nm=dexName(sl.p);
+
+  if(sl.a){                                  // espaco de "qualquer versão"
+    const shown=sl.c||(cardsOf(sl.p)[0]||[])[0];
+    const c=shown?BY_KEY.get(shown):null;
+    if(c)paint(p,c[2],c[3]); else p.appendChild(el('div','num',String(sl.p).padStart(3,'0')));
+    p.appendChild(el('div','badge','qualquer'));
+    p.appendChild(el('div','cap',sl.c&&c?c[1]:nm));
+    p.setAttribute('aria-label',nm+' — qualquer versão'+(s.on?' (tenho)':' (falta)'));
+    p.onclick=()=>versionSheet({
+      title:nm+' — qualquer versão',dex:sl.p,current:sl.c,
+      onPick:k=>{sl.c=k;},onClear:()=>{sl.c=null;},
+      clearLabel:'Marcar como faltando'
+    });
+    return p;
+  }
+
+  const c=BY_KEY.get(sl.c);                  // espaco de carta especifica
+  if(c){
+    paint(p,c[2],c[3]);
+    p.appendChild(el('div','cap',setLabel(c)));
+    p.setAttribute('aria-label',c[1]+' — '+setLabel(c)+(s.on?' (tenho)':' (falta)'));
+  }
+  p.onclick=()=>{
+    if(b.owned[sl.s])delete b.owned[sl.s];else b.owned[sl.s]=1;
+    save();render();
+  };
   return p;
 }
 
@@ -481,7 +559,7 @@ function pager(pages){
 
 /* ================= bottom sheet ================= */
 let sheetEl;
-function openSheet(title,build){
+function openSheet(title,build,footer){
   closeSheet();
   sheetEl=el('div','sheet');
   const inner=el('div','sheet-in');
@@ -492,6 +570,7 @@ function openSheet(title,build){
   const bd=el('div','sheet-bd');
   inner.append(hd,bd);sheetEl.appendChild(inner);
   sheetEl.onclick=e=>{if(e.target===sheetEl)closeSheet();};
+  if(footer)inner.appendChild(footer);
   document.body.appendChild(sheetEl);
   build(bd);
 }
@@ -501,35 +580,99 @@ function toast(msg){
   setTimeout(()=>t.remove(),2200);
 }
 
-/* ---- escolher qual carta preenche o slot da Pokédex ---- */
-function dexSlot(s){
-  const list=cardsOf(s.dex);
-  openSheet(`#${String(s.dex).padStart(3,'0')} ${s.name}`,bd=>{
-    if(s.on){
-      const cur=BY_KEY.get(s.key);
-      const info=el('p','note',cur?`Preenchido com: ${cur[1]} — ${setLabel(cur)}`:'Preenchido.');
-      bd.appendChild(info);
-      const rm=el('button','btn warn','Desmarcar este Pokémon');
-      rm.onclick=()=>{delete S.dex[s.dex];save();closeSheet();render();};
+/* ---- escolher qual versão preenche um espaço ---- */
+function cardRow(c,extra){
+  const r=el('button','row');
+  const th=el('img','th');th.alt='';th.loading='lazy';
+  getImg(imgUrl(c[2],c[3])).then(u=>{th.src=u;});
+  const m=el('div','m');
+  m.appendChild(el('b',null,c[1]));
+  m.appendChild(el('small',null,setLabel(c)+(c[4]?' · '+c[4]:'')));
+  r.append(th,m);
+  if(extra)r.appendChild(extra);
+  return r;
+}
+function versionSheet(o){
+  const list=cardsOf(o.dex);
+  openSheet(o.title,bd=>{
+    if(o.current){
+      const cur=BY_KEY.get(o.current);
+      bd.appendChild(el('p','note',cur?`Preenchido com: ${cur[1]} — ${setLabel(cur)}`:'Preenchido.'));
+      const rm=el('button','btn warn',o.clearLabel);
+      rm.onclick=()=>{o.onClear();save();closeSheet();render();};
       bd.appendChild(rm);
-      bd.appendChild(el('p','note','Ou escolha outra carta abaixo para trocar.'));
+      bd.appendChild(el('p','note','Ou escolha outra versão abaixo para trocar.'));
     }else{
-      bd.appendChild(el('p','note',`${list.length} cartas deste Pokémon. Escolha qual você tem.`));
+      bd.appendChild(el('p','note',`${list.length} versões deste Pokémon. Escolha qual você tem.`));
     }
     const wrap=el('div');bd.appendChild(wrap);
     list.forEach(c=>{
-      const r=el('button','row');
-      const th=el('img','th');th.alt='';th.loading='lazy';
-      getImg(imgUrl(c[2],c[3])).then(u=>{th.src=u;});
-      const m=el('div','m');
-      m.appendChild(el('b',null,c[1]));
-      m.appendChild(el('small',null,setLabel(c)+(c[4]?' · '+c[4]:'')));
-      r.append(th,m);
-      if(s.key===c[0])r.appendChild(el('div','tick','✓'));
-      r.onclick=()=>{S.dex[s.dex]=c[0];save();closeSheet();render();};
+      const r=cardRow(c,o.current===c[0]?el('div','tick','✓'):null);
+      r.onclick=()=>{o.onPick(c[0]);save();closeSheet();render();};
       wrap.appendChild(r);
     });
   });
+}
+
+/* ---- como colecionar este Pokémon ---- */
+function howToCollect(b,n){
+  const nm=dexName(n),list=cardsOf(n);
+  openSheet(`Como colecionar ${nm}?`,bd=>{
+    const mk=(title,sub,fn)=>{
+      const t=el('button','tile');t.style.padding='16px';
+      const l=el('div','l');
+      l.appendChild(el('b',null,title));
+      l.appendChild(el('small',null,sub));
+      t.append(l,el('div','go','›'));
+      t.onclick=fn;return t;
+    };
+    const tiles=el('div','tiles');
+    tiles.appendChild(mk('Todas as versões',
+      `${list.length} espaços, um para cada carta já lançada`,()=>{
+      const added=addSlots(b,n,list,false);save();closeSheet();viewState.page=0;render();
+      toast(added?`${added} espaços adicionados`:'Essas cartas já estavam no binder');
+    }));
+    tiles.appendChild(mk('Qualquer uma',
+      '1 espaço; você marca depois qual versão conseguiu',()=>{
+      addSlots(b,n,null,true);save();closeSheet();viewState.page=0;render();
+      toast('Espaço adicionado');
+    }));
+    tiles.appendChild(mk('Escolher versões',
+      'Selecione na lista só as cartas que você quer',()=>pickVersions(b,n)));
+    bd.appendChild(tiles);
+  });
+}
+
+/* ---- selecionar versões específicas ---- */
+function pickVersions(b,n){
+  const nm=dexName(n),list=cardsOf(n);
+  const have=new Set(binderSlots(b).filter(x=>!x.a).map(x=>x.c));
+  const sel=new Set();
+  const ok=el('button','btn','Selecione ao menos uma');
+  ok.disabled=true;
+  const ft=el('div','sheet-ft');ft.appendChild(ok);
+  openSheet(`${nm} — escolher versões`,bd=>{
+    bd.appendChild(el('p','note',`${list.length} versões. Toque para selecionar. As que já estão no binder aparecem marcadas.`));
+    const wrap=el('div');bd.appendChild(wrap);
+    list.forEach(c=>{
+      const already=have.has(c[0]);
+      const chk=el('div','chk','✓');
+      const r=cardRow(c,chk);
+      if(already){r.classList.add('sel');r.style.opacity='.5';r.disabled=true;}
+      else r.onclick=()=>{
+        if(sel.has(c[0])){sel.delete(c[0]);r.classList.remove('sel');}
+        else{sel.add(c[0]);r.classList.add('sel');}
+        ok.disabled=!sel.size;
+        ok.textContent=sel.size?`Adicionar ${sel.size} carta${sel.size>1?'s':''}`:'Selecione ao menos uma';
+      };
+      wrap.appendChild(r);
+    });
+  },ft);
+  ok.onclick=()=>{
+    addSlots(b,n,list.filter(c=>sel.has(c[0])),false);
+    save();closeSheet();viewState.page=0;render();
+    toast(`${sel.size} espaços adicionados`);
+  };
 }
 
 /* ---- escolher um Pokémon ---- */
@@ -564,12 +707,12 @@ function newBinder(){
   openSheet('Novo binder',bd=>{
     const inp=el('input');inp.type='text';inp.placeholder='Nome do binder';
     bd.appendChild(inp);
-    bd.appendChild(el('p','note','Depois de criar, você escolhe os Pokémon e o app traz todas as cartas já lançadas de cada um.'));
+    bd.appendChild(el('p','note','Depois de criar, você escolhe os Pokémon. Para cada um dá para colecionar todas as versões, qualquer uma, ou só as que você escolher.'));
     const ok=el('button','btn','Criar binder');
     ok.onclick=()=>{
       const name=inp.value.trim();
       if(!name)return toast('Dê um nome ao binder');
-      const b={id:'b'+Date.now(),name,pokemon:[],owned:{}};
+      const b={id:'b'+Date.now(),name,seq:0,slots:[],owned:{}};
       S.binders.push(b);save();closeSheet();viewState.page=0;viewState.filter='all';
       go({name:'binder',id:b.id});
     };
@@ -630,6 +773,27 @@ $('#menu').onclick=()=>{
 
     if(route.name==='binder'){
       const b=S.binders.find(x=>x.id===route.id);
+      const nums=dexNumsIn(b);
+      if(nums.length){
+        const rm=el('button','btn ghost','Remover um Pokémon do binder');
+        rm.onclick=()=>openSheet('Remover do binder',bd2=>{
+          bd2.appendChild(el('p','note','Isso apaga os espaços desse Pokémon e as marcações deles.'));
+          nums.forEach(([n,qtd])=>{
+            const r=el('button','row');
+            const m=el('div','m');
+            m.appendChild(el('b',null,dexName(n)));
+            m.appendChild(el('small',null,`${qtd} espaço${qtd>1?'s':''}`));
+            r.append(m,el('div','tick','✕'));
+            r.onclick=()=>{
+              for(const sl of b.slots.filter(x=>x.p===n))delete b.owned[sl.s];
+              b.slots=b.slots.filter(x=>x.p!==n);
+              save();closeSheet();viewState.page=0;render();toast(`${dexName(n)} removido`);
+            };
+            bd2.appendChild(r);
+          });
+        });
+        bd.appendChild(rm);
+      }
       const del=el('button','btn warn','Excluir este binder');
       del.onclick=()=>{
         if(!confirm(`Excluir "${b.name}"? As marcações deste binder serão perdidas.`))return;
@@ -644,7 +808,10 @@ async function downloadImages(btn){
   const isDex=route.name==='dex';
   let list;
   if(isDex)list=Object.values(S.dex).map(k=>BY_KEY.get(k)).filter(Boolean);
-  else list=binderCards(S.binders.find(x=>x.id===route.id));
+  else{
+    const b=S.binders.find(x=>x.id===route.id);
+    list=binderSlots(b).map(sl=>BY_KEY.get(sl.c||(cardsOf(sl.p)[0]||[])[0])).filter(Boolean);
+  }
   if(!list.length)return toast('Nada para baixar ainda');
   btn.disabled=true;let done=0,fail=0;
   for(const c of list){
@@ -672,7 +839,9 @@ async function downloadImages(btn){
         BY_DEX.get(n).push(c);
       }
     }
+    for(const [n,nm] of DEX)DEXNAME.set(n,nm);
     if(st)S=Object.assign(S,st);
+    if(migrate())kvPut('state',S).catch(()=>{});
     $('#boot').classList.add('hide');
     $('#app').classList.remove('hide');
     render();
