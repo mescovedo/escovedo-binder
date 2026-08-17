@@ -125,10 +125,25 @@ main{padding:var(--pad);max-width:640px;margin:0 auto}
   font-size:14px;color:var(--dim);
 }
 .chip[aria-pressed=true]{background:var(--text);color:var(--ink);border-color:var(--text);font-weight:600}
-.pager{display:flex;align-items:center;justify-content:center;gap:16px;margin:16px 0 4px}
-.pager span{font-variant-numeric:tabular-nums;font-size:14px;color:var(--dim);min-width:130px;text-align:center}
-.pager button{width:40px;height:40px;border-radius:12px;border:1px solid var(--edge);font-size:18px}
-.pager button:disabled{opacity:.25}
+.pager{margin:16px 0 4px;text-align:center}
+.pager .lbl{
+  font-variant-numeric:tabular-nums;font-size:14px;color:var(--dim);
+  padding:6px 14px;border-radius:999px;border:1px solid var(--edge);
+}
+.pager .lbl:active{color:var(--text);border-color:var(--act)}
+.pager .row2{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:11px}
+.pager .row2 button{
+  min-width:44px;height:42px;border-radius:12px;border:1px solid var(--edge);
+  font-size:15px;letter-spacing:-.06em;
+}
+.pager .row2 button:disabled{opacity:.22}
+.jump input[type=number]{
+  width:100%;padding:12px 14px;border-radius:11px;background:var(--pocket);
+  border:1px solid var(--edge);color:var(--text);font:inherit;text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+.jump .quick{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.jump .quick button{flex:1;min-width:64px;padding:10px 6px;border-radius:10px;border:1px solid var(--edge);font-size:13px}
 
 /* ---------- a pagina do binder (assinatura) ---------- */
 .page{
@@ -271,7 +286,7 @@ input:focus-visible,button:focus-visible,.pocket:focus-visible{outline:2px solid
 
 <script>
 'use strict';
-const APP_VERSION='2026.08.17-5';
+const APP_VERSION='2026.08.17-6';
 const IMG_BASE='https://images.pokemontcg.io/';
 const PER_PAGE=9;
 const $=s=>document.querySelector(s);
@@ -297,7 +312,9 @@ const kvPut=(k,v)=>idb('kv','readwrite',s=>s.put(v,k));
 
 /* ================= estado ================= */
 let CARDS=[],SETS={},DEX=[],BY_DEX=new Map(),BY_KEY=new Map();
-let BUILT='',EXTRA={sets:{},cards:[],at:0};
+let BUILT='',SHAS={},EXTRA={sets:{},cards:[],at:0,shas:{}};
+/* coleções que recebem cartas o tempo todo (promos) valem checagem extra */
+const CRESCEM=/(p|promo)$/i;
 const DATA_REPO='https://raw.githubusercontent.com/PokemonTCG/pokemon-tcg-data/master/';
 
 function reindex(){
@@ -332,8 +349,22 @@ function save(){clearTimeout(saveT);saveT=setTimeout(()=>kvPut('state',S).catch(
 /* ================= imagens: baixa uma vez, guarda pra sempre ================= */
 const memo=new Map();
 let corsOK=true;
-function imgUrl(setId,number){return IMG_BASE+setId+'/'+encodeURIComponent(number)+'.png';}
-async function getImg(url){
+/* Cada coleção declara onde ficam suas imagens: 0 = images.pokemontcg.io,
+   1 = images.scrydex.com (adotado nas coleções mais recentes). */
+function imgUrl(setId,number,big){
+  const n=encodeURIComponent(number);
+  const kind=(SETS[setId]||[])[4]|0;
+  if(kind===1)return 'https://images.scrydex.com/pokemon/'+setId+'-'+n+(big?'/large':'/small');
+  return IMG_BASE+setId+'/'+n+(big?'_hires':'')+'.png';
+}
+/* se o endereço principal falhar, tenta o outro servidor antes de desistir */
+function imgAlt(setId,number,big){
+  const n=encodeURIComponent(number);
+  const kind=(SETS[setId]||[])[4]|0;
+  if(kind===1)return IMG_BASE+setId+'/'+n+(big?'_hires':'')+'.png';
+  return 'https://images.scrydex.com/pokemon/'+setId+'-'+n+(big?'/large':'/small');
+}
+async function getImg(url,alt){
   if(memo.has(url))return memo.get(url);
   const p=(async()=>{
     try{
@@ -342,7 +373,8 @@ async function getImg(url){
     }catch(e){}
     if(!corsOK)return url;
     try{
-      const r=await fetch(url,{mode:'cors'});
+      let r=await fetch(url,{mode:'cors'});
+      if(!r.ok&&alt){r=await fetch(alt,{mode:'cors'});}
       if(!r.ok)throw 0;
       const b=await r.blob();
       idb('img','readwrite',s=>s.put(b,url)).catch(()=>{});
@@ -352,7 +384,7 @@ async function getImg(url){
   memo.set(url,p);return p;
 }
 function paint(node,setId,number){
-  getImg(imgUrl(setId,number)).then(src=>{
+  getImg(imgUrl(setId,number),imgAlt(setId,number)).then(src=>{
     if(!node.isConnected)return;
     const im=new Image();im.decoding='async';im.alt='';
     im.onload=()=>{if(node.isConnected){node.querySelectorAll('img').forEach(x=>x.remove());node.appendChild(im);}};
@@ -426,7 +458,7 @@ function migrate(){
 
 /* ================= navegacao ================= */
 let route={name:'menu'};
-const BACK={list:'menu',dex:'list',binder:'list',config:'menu'};
+const BACK={list:'menu',dex:'list',binder:'list',config:'menu',track:'list'};
 function go(r){route=r;render();window.scrollTo(0,0);}
 function backTo(){return route.from||{name:BACK[route.name]||'menu'};}
 $('#back').onclick=()=>go(backTo());
@@ -440,6 +472,11 @@ function render(){
   if(route.name==='dex')return binderView(v,'dex');
   if(route.name==='binder')return binderView(v,route.id);
   if(route.name==='config')return config(v);
+  if(route.name==='track'){
+    const b=S.binders.find(x=>x.id===route.id);
+    if(!b)return go({name:'list'});
+    return trackView(v,b);
+  }
 }
 
 /* ================= configurações ================= */
@@ -463,6 +500,10 @@ function config(v){
     if(b){
       const nums=dexNumsIn(b);
       if(nums.length){
+        const tr=el('button','btn ghost','Rastrear coleções');
+        tr.onclick=()=>go({name:'track',id:b.id,from:from});
+        box.appendChild(tr);
+        box.appendChild(el('p','k','Quantas cartas de cada coleção ainda faltam neste binder.'));
         const rm=el('button','btn ghost','Remover um Pokémon do binder');
         rm.onclick=()=>removePokemonSheet(b);
         box.appendChild(rm);
@@ -485,10 +526,10 @@ function config(v){
   box1.appendChild(el('p',null,`${CARDS.length.toLocaleString('pt-BR')} cartas em ${Object.keys(SETS).length} coleções`));
   box1.appendChild(el('p','k',`Mais recente: ${last?SETS[last][0]:'—'} · ${last?fmtDate(SETS[last][2]):''}`));
   box1.appendChild(el('p','k',EXTRA.at?`Última verificação: ${fmtDate(new Date(EXTRA.at).toISOString().slice(0,10))}`:`Base do app: ${fmtDate(BUILT)}`));
-  const chk=el('button','btn','Procurar coleções novas');
+  const chk=el('button','btn','Procurar novidades');
   chk.onclick=()=>checkNewSets(chk);
   box1.appendChild(chk);
-  box1.appendChild(el('p','k','Busca direto no repositório público de dados. Coleções novas entram sem precisar atualizar o app.'));
+  box1.appendChild(el('p','k','Busca direto no repositório público. Detecta coleções novas e também cartas promocionais adicionadas a coleções já existentes.'));
   sec1.appendChild(box1);v.appendChild(sec1);
 
   /* --- backup --- */
@@ -545,6 +586,97 @@ function config(v){
   sec3.appendChild(box3);v.appendChild(sec3);
 }
 
+/* ================= rastrear coleções =================
+   Para cada coleção, quantas cartas dela ainda faltam neste binder.
+   Serve para decidir se vale comprar um pacote antigo, e para medir
+   o quanto uma coleção recém-lançada acrescenta ao binder.          */
+function trackSets(b){
+  const tenho=new Set();
+  for(const sl of binderSlots(b)){
+    if(sl.a){if(sl.c)tenho.add(sl.c);}
+    else if(b.owned[sl.s])tenho.add(sl.c);
+  }
+  const comEspaco=new Set(binderSlots(b).filter(x=>!x.a&&x.c).map(x=>x.c));
+  const nums=[...new Set(binderSlots(b).map(x=>x.p))];
+
+  const porSet=new Map();
+  for(const n of nums)for(const c of cardsOf(n)){
+    if(tenho.has(c[0]))continue;
+    if(!porSet.has(c[2]))porSet.set(c[2],[]);
+    porSet.get(c[2]).push(c);
+  }
+  const linhas=[...porSet.entries()].map(([sid,cs])=>({
+    sid,cs,
+    vazios:cs.filter(c=>comEspaco.has(c[0])).length,
+    data:(SETS[sid]||[])[2]||''
+  }));
+  return {linhas,comEspaco};
+}
+
+function trackView(v,b){
+  $('#title').textContent='Rastrear coleções';
+  $('#back').classList.remove('hide');
+  $('#sub').classList.add('hide');
+
+  const {linhas,comEspaco}=trackSets(b);
+  if(!linhas.length){
+    v.appendChild(el('div','empty','Nada faltando neste binder. Coleção completa.'));
+    return;
+  }
+
+  const tools=el('div','tools');
+  const chips=el('div','chips');
+  [['qtd','Mais cartas'],['novo','Mais recentes']].forEach(([k,lbl])=>{
+    const c=el('button','chip',lbl);
+    c.setAttribute('aria-pressed',(trackView.ord||'qtd')===k);
+    c.onclick=()=>{trackView.ord=k;render();};
+    chips.appendChild(c);
+  });
+  tools.appendChild(chips);
+  v.appendChild(tools);
+
+  linhas.sort((a,b2)=>(trackView.ord==='novo')
+    ? b2.data.localeCompare(a.data)
+    : b2.cs.length-a.cs.length||b2.data.localeCompare(a.data));
+
+  const totalF=linhas.reduce((a,l)=>a+l.cs.length,0);
+  v.appendChild(el('p','note',`${totalF} cartas faltando, espalhadas por ${linhas.length} coleções. Toque numa coleção para ver quais.`));
+
+  const shelf=el('div','shelf');shelf.style.marginTop='12px';
+  linhas.forEach(l=>{
+    const st=SETS[l.sid]||['?','','',0,0];
+    const row=el('button','binder');
+    row.style.paddingLeft='16px';
+    row.appendChild(el('div','t',st[0]));
+    row.appendChild(el('div','s',
+      `${l.cs.length} carta${l.cs.length>1?'s':''} faltando · ${fmtDate(l.data)}`
+      +(l.vazios?` · ${l.vazios} com espaço no binder`:'')));
+    row.onclick=()=>trackSetSheet(b,l,comEspaco);
+    shelf.appendChild(row);
+  });
+  v.appendChild(shelf);
+}
+
+function trackSetSheet(b,l,comEspaco){
+  const st=SETS[l.sid]||['?'];
+  openSheet(st[0],bd=>{
+    bd.appendChild(el('p','note',`${l.cs.length} carta${l.cs.length>1?'s':''} desta coleção que ainda falta${l.cs.length>1?'m':''} no binder.`));
+    l.cs.forEach(c=>{
+      const tag=el('div','tick',comEspaco.has(c[0])?'□':'+');
+      tag.style.cssText='color:'+(comEspaco.has(c[0])?'var(--act)':'var(--dim)')+';font-size:15px';
+      tag.title=comEspaco.has(c[0])?'espaço vazio no binder':'ainda não está no binder';
+      const r=cardRow(c,tag);
+      r.onclick=()=>bigSheet(c);
+      bd.appendChild(r);
+    });
+    bd.appendChild(el('p','note','□ espaço vazio esperando a carta · + carta que ainda não tem espaço no binder'));
+  });
+}
+
+function bigSheet(c){
+  openSheet(c[1],bd=>{bd.appendChild(bigCard(c,false));});
+}
+
 function removePokemonSheet(b){
   openSheet('Remover do binder',bd=>{
     bd.appendChild(el('p','note','Isso apaga os espaços desse Pokémon e as marcações deles.'));
@@ -566,57 +698,96 @@ function removePokemonSheet(b){
 }
 
 /* ================= coleções novas ================= */
+/* Detecta duas coisas: coleções novas E coleções antigas que ganharam cartas
+   (é assim que as promocionais chegam). Caminho preferido: uma única consulta
+   que devolve a assinatura de cada arquivo. Se o GitHub recusar por limite de
+   uso, cai para uma checagem dirigida às promos e às coleções mais recentes. */
 async function checkNewSets(btn){
   btn.disabled=true;btn.textContent='Procurando…';
+  const volta=()=>{btn.disabled=false;btn.textContent='Procurar novidades';};
   try{
     const r=await fetch(DATA_REPO+'sets/en.json',{cache:'no-store'});
     if(!r.ok)throw 0;
     const all=await r.json();
-    const novos=all.filter(x=>!SETS[x.id]).sort((a,b)=>(a.releaseDate||'').localeCompare(b.releaseDate||''));
+    const porId={};all.forEach(x=>porId[x.id]=x);
+
+    const alvo=new Map();   // id -> {set, motivo}
+    for(const x of all)if(!SETS[x.id])alvo.set(x.id,{set:x,novo:true});
+
+    let viaSha=false;
+    try{
+      const g=await fetch('https://api.github.com/repos/PokemonTCG/pokemon-tcg-data/contents/cards/en?per_page=200',{cache:'no-store'});
+      if(g.ok){
+        const files=await g.json();
+        if(Array.isArray(files)&&files.length>50){
+          viaSha=true;
+          for(const f of files){
+            const id=f.name.replace(/\.json$/,'');
+            const conhecido=EXTRA.shas[id]||SHAS[id];
+            if(conhecido&&conhecido!==f.sha&&porId[id])alvo.set(id,{set:porId[id],novo:false});
+            EXTRA.shas[id]=EXTRA.shas[id]||conhecido;
+          }
+          EXTRA.pending=Object.fromEntries(files.map(f=>[f.name.replace(/\.json$/,''),f.sha]));
+        }
+      }
+    }catch(e){}
+
+    if(!viaSha){
+      // plano B: promos e as 8 coleções mais recentes, que são as que mudam
+      const recentes=all.slice().sort((a,b)=>(b.releaseDate||'').localeCompare(a.releaseDate||'')).slice(0,8);
+      for(const x of all)if(CRESCEM.test(x.id)&&SETS[x.id])alvo.set(x.id,{set:x,novo:false});
+      for(const x of recentes)if(SETS[x.id])alvo.set(x.id,{set:x,novo:false});
+    }
+
     EXTRA.at=Date.now();
     await kvPut('extra',EXTRA);
-    btn.disabled=false;btn.textContent='Procurar coleções novas';
-    if(!novos.length){toast('Nenhuma coleção nova. Base em dia.');render();return;}
-    newSetsSheet(novos);
-  }catch(e){
-    btn.disabled=false;btn.textContent='Procurar coleções novas';
-    toast('Não consegui verificar. Sem internet?');
-  }
+    volta();
+    const lista=[...alvo.values()].sort((a,b)=>(a.set.releaseDate||'').localeCompare(b.set.releaseDate||''));
+    if(!lista.length){toast('Nenhuma novidade. Base em dia.');render();return;}
+    newSetsSheet(lista,viaSha);
+  }catch(e){volta();toast('Não consegui verificar. Sem internet?');}
 }
 
-function newSetsSheet(novos){
-  const n=novos.length;
+function newSetsSheet(lista,viaSha){
+  const n=lista.length;
+  const qNovas=lista.filter(x=>x.novo).length;
   const ok=el('button','btn',`Baixar ${n} coleção${n>1?'ões':''}`);
   const ft=el('div','sheet-ft');ft.appendChild(ok);
-  openSheet(`${n} coleção${n>1?'ões nova':' nova'}${n>1?'s':''}`,bd=>{
-    bd.appendChild(el('p','note','Só as cartas de Pokémon entram. Depois de baixar, você decide se os binders recebem espaços novos.'));
-    novos.forEach(x=>{
+  const titulo=qNovas===n?`${n} coleção${n>1?'ões novas':' nova'}`:'Novidades encontradas';
+  openSheet(titulo,bd=>{
+    bd.appendChild(el('p','note',viaSha
+      ?'Coleções novas e coleções antigas que ganharam cartas — é assim que as promocionais chegam. Só entram cartas de Pokémon.'
+      :'Coleções novas, mais as promos e as mais recentes, que são as que costumam ganhar cartas. Só entram cartas de Pokémon.'));
+    lista.forEach(({set:x,novo})=>{
       const row=el('div','newset');
       row.appendChild(el('span','dt',fmtDate(x.releaseDate)));
-      row.appendChild(el('span',null,`${x.name} · ${x.printedTotal||x.total||'?'} cartas`));
+      row.appendChild(el('span',null,`${x.name}${novo?'':' · atualização'}`));
       bd.appendChild(row);
     });
   },ft);
   ok.onclick=async()=>{
     ok.disabled=true;let add=0,falhas=0;
-    for(let i=0;i<novos.length;i++){
-      const x=novos[i];
-      ok.textContent=`Baixando ${i+1} de ${novos.length}…`;
+    for(let i=0;i<lista.length;i++){
+      const x=lista[i].set;
+      ok.textContent=`Baixando ${i+1} de ${lista.length}…`;
       try{
         const r=await fetch(DATA_REPO+'cards/en/'+x.id+'.json',{cache:'no-store'});
         if(!r.ok)throw 0;
         const raws=await r.json();
         const slim=raws.map(c=>slimCard(c,x.id)).filter(Boolean);
-        EXTRA.sets[x.id]=[x.name,x.series||'',x.releaseDate||'',x.printedTotal||x.total||0];
+        const scry=raws.filter(c=>((c.images||{}).small||'').includes('scrydex')).length;
+        EXTRA.sets[x.id]=[x.name,x.series||'',x.releaseDate||'',x.printedTotal||x.total||0,
+                          scry>raws.length/2?1:0];
+        if(EXTRA.pending&&EXTRA.pending[x.id])EXTRA.shas[x.id]=EXTRA.pending[x.id];
         for(const c of slim)if(!BY_KEY.has(c[0])){EXTRA.cards.push(c);add++;}
       }catch(e){falhas++;}
     }
-    EXTRA.at=Date.now();
+    EXTRA.at=Date.now();delete EXTRA.pending;
     await kvPut('extra',EXTRA);
     applyExtra();
     closeSheet();render();
-    toast(falhas?`${add} cartas novas · ${falhas} coleção(ões) falharam`:`${add} cartas novas na base`);
-    offerAutoFill();
+    toast(falhas?`${add} cartas novas · ${falhas} falharam`:add?`${add} cartas novas na base`:'Nada novo encontrado');
+    if(add)offerAutoFill();
   };
 }
 
@@ -878,13 +1049,56 @@ function pocket(s,isDex,b){
 
 function pager(pages){
   const w=el('div','pager');
-  const prev=el('button',null,'‹'),next=el('button',null,'›');
-  const lbl=el('span',null,`Página ${viewState.page+1} de ${pages}`);
-  prev.disabled=viewState.page===0;next.disabled=viewState.page>=pages-1;
-  prev.setAttribute('aria-label','Página anterior');next.setAttribute('aria-label','Próxima página');
-  prev.onclick=()=>{viewState.page--;render();};
-  next.onclick=()=>{viewState.page++;render();};
-  w.append(prev,lbl,next);return w;
+  const p=viewState.page;
+  const salto=Math.max(1,Math.ceil(pages/4));   // um quarto do binder por toque
+
+  const lbl=el('button','lbl',`Página ${p+1} de ${pages}`);
+  lbl.onclick=()=>jumpSheet(pages);
+  w.appendChild(lbl);
+
+  const r=el('div','row2');
+  const mk=(txt,destino,rotulo)=>{
+    const b=el('button',null,txt);
+    b.setAttribute('aria-label',rotulo);
+    b.disabled=destino===p;
+    b.onclick=()=>{viewState.page=destino;render();};
+    return b;
+  };
+  r.append(
+    mk('|‹',0,'Primeira página'),
+    mk('‹‹',Math.max(0,p-salto),`Voltar ${salto} páginas`),
+    mk('‹',Math.max(0,p-1),'Página anterior'),
+    mk('›',Math.min(pages-1,p+1),'Próxima página'),
+    mk('››',Math.min(pages-1,p+salto),`Avançar ${salto} páginas`),
+    mk('›|',pages-1,'Última página')
+  );
+  w.appendChild(r);
+  return w;
+}
+
+function jumpSheet(pages){
+  openSheet('Ir para a página',bd=>{
+    const box=el('div','jump');
+    const inp=el('input');inp.type='number';inp.min=1;inp.max=pages;inp.value=viewState.page+1;
+    box.appendChild(inp);
+    const q=el('div','quick');
+    [['Início',0],['25%',Math.floor(pages*.25)],['50%',Math.floor(pages*.5)],
+     ['75%',Math.floor(pages*.75)],['Fim',pages-1]].forEach(([t,d])=>{
+      const b=el('button',null,t);
+      b.onclick=()=>{viewState.page=Math.min(pages-1,Math.max(0,d));closeSheet();render();};
+      q.appendChild(b);
+    });
+    box.appendChild(q);
+    const ok=el('button','btn','Ir');
+    ok.onclick=()=>{
+      const n=parseInt(inp.value,10);
+      if(!n||n<1||n>pages)return toast(`Digite um número entre 1 e ${pages}`);
+      viewState.page=n-1;closeSheet();render();
+    };
+    box.appendChild(ok);
+    bd.appendChild(box);
+    setTimeout(()=>{inp.focus();inp.select();},80);
+  });
 }
 
 /* ================= bottom sheet ================= */
@@ -921,10 +1135,11 @@ function bigCard(c,owned){
   const im=new Image();im.alt=c[1];im.decoding='async';
   let posto=false;
   const por=src=>{im.src=src;if(!posto){posto=true;fr.appendChild(im);}};
-  getImg(imgUrl(c[2],c[3])).then(u=>{if(!im.src)por(u);}).catch(()=>{});
+  getImg(imgUrl(c[2],c[3]),imgAlt(c[2],c[3])).then(u=>{if(!im.src)por(u);}).catch(()=>{});
   const hi=new Image();
   hi.onload=()=>por(hi.src);
-  hi.src=IMG_BASE+c[2]+'/'+encodeURIComponent(c[3])+'_hires.png';
+  hi.onerror=()=>{const a=imgAlt(c[2],c[3],true);if(hi.src!==a)hi.src=a;};
+  hi.src=imgUrl(c[2],c[3],true);
 
   box.appendChild(el('h4',null,c[1]));
   box.appendChild(el('div','meta',setRef(c)+(c[4]?' · '+c[4]:'')));
@@ -957,7 +1172,7 @@ function cardSheet(b,sl){
 function cardRow(c,extra){
   const r=el('button','row');
   const th=el('img','th');th.alt='';th.loading='lazy';
-  getImg(imgUrl(c[2],c[3])).then(u=>{th.src=u;});
+  getImg(imgUrl(c[2],c[3]),imgAlt(c[2],c[3])).then(u=>{th.src=u;});
   const m=el('div','m');
   m.appendChild(el('b',null,c[1]));
   m.appendChild(el('small',null,setRef(c)+(c[4]?' · '+c[4]:'')));
@@ -1114,7 +1329,7 @@ async function downloadImages(btn,from){
   if(!list.length)return toast('Nada para baixar ainda');
   btn.disabled=true;let done=0,fail=0;
   for(const c of list){
-    try{await getImg(imgUrl(c[2],c[3]));}catch(e){fail++;}
+    try{await getImg(imgUrl(c[2],c[3]),imgAlt(c[2],c[3]));}catch(e){fail++;}
     done++;btn.textContent=`Baixando ${done} de ${list.length}…`;
   }
   btn.textContent='Imagens salvas neste celular';
@@ -1131,9 +1346,9 @@ async function downloadImages(btn,from){
       kvGet('state')
     ]);
     void 0;
-    SETS=raw.sets;CARDS=raw.cards;DEX=dex;BUILT=raw.built||'';
+    SETS=raw.sets;CARDS=raw.cards;DEX=dex;BUILT=raw.built||'';SHAS=raw.shas||{};
     reindex();
-    try{const e=await kvGet('extra');if(e&&e.sets){EXTRA=e;applyExtra();}}catch(err){}
+    try{const e=await kvGet('extra');if(e&&e.sets){EXTRA=Object.assign({shas:{}},e);applyExtra();}}catch(err){}
     for(const [n,nm] of DEX)DEXNAME.set(n,nm);
     if(st)S=Object.assign(S,st);
     if(migrate())kvPut('state',S).catch(()=>{});

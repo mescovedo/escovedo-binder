@@ -1,7 +1,7 @@
 /* Escovedo Binder - service worker
    index.html e sw.js: rede primeiro (cache so' como rede de seguranca offline)
    dados, icone, manifest: cache primeiro (mudam raramente, sao grandes)         */
-const V = 'binder-v5';
+const V = 'binder-v6';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg',
                './data/cards.json', './data/pokedex.json'];
 const STATIC = /(\.json|\.svg|\.webmanifest)$/;
