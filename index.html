@@ -218,6 +218,25 @@ input:focus-visible,button:focus-visible,.pocket:focus-visible{outline:2px solid
   display:grid;place-items:center;font-size:13px;color:transparent;
 }
 .row.sel .chk{background:var(--have);border-color:var(--have);color:#0b1a12}
+.big{text-align:center;padding:4px 0 2px}
+.big .frame{
+  position:relative;display:inline-block;width:100%;max-width:300px;
+  aspect-ratio:63/88;border-radius:12px;overflow:hidden;background:var(--pocket);
+  box-shadow:0 12px 34px rgba(0,0,0,.5);
+}
+.big .frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.big .frame .spin{position:absolute;left:50%;top:50%;margin:-13px 0 0 -13px}
+.big .frame.sharp::after{
+  content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 2px var(--have);border-radius:12px;
+}
+.big h4{margin:14px 0 3px;font-size:19px;font-weight:650;letter-spacing:-.01em}
+.big .meta{color:var(--dim);font-size:13.5px}
+.big .state{
+  margin-top:12px;display:inline-block;padding:5px 13px;border-radius:999px;
+  font-size:12.5px;font-weight:600;border:1px solid var(--edge);color:var(--dim);
+}
+.big .state.on{color:var(--have);border-color:rgba(61,220,151,.4)}
+.btn.have{background:var(--have);color:#06251a}
 .sheet-ft{padding:12px var(--pad);border-top:1px solid var(--edge);flex:none}
 .sheet-ft .btn{margin-top:0}
 .hero .ver{margin-top:9px;font-size:11.5px;color:var(--dim);letter-spacing:.05em;font-variant-numeric:tabular-nums}
@@ -252,7 +271,7 @@ input:focus-visible,button:focus-visible,.pocket:focus-visible{outline:2px solid
 
 <script>
 'use strict';
-const APP_VERSION='2026.08.17-4';
+const APP_VERSION='2026.08.17-5';
 const IMG_BASE='https://images.pokemontcg.io/';
 const PER_PAGE=9;
 const $=s=>document.querySelector(s);
@@ -853,10 +872,7 @@ function pocket(s,isDex,b){
     if(S.prefs.showSet)p.appendChild(el('div','cap',setRef(c)));
     p.setAttribute('aria-label',c[1]+' — '+setRef(c)+(s.on?' (tenho)':' (falta)'));
   }
-  p.onclick=()=>{
-    if(b.owned[sl.s])delete b.owned[sl.s];else b.owned[sl.s]=1;
-    save();render();
-  };
+  p.onclick=()=>cardSheet(b,sl);
   return p;
 }
 
@@ -894,6 +910,49 @@ function toast(msg){
   setTimeout(()=>t.remove(),2200);
 }
 
+/* ---- carta em tamanho grande: mostra a versão em cache na hora,
+       troca pela alta resolução quando a rede responde ---- */
+function bigCard(c,owned){
+  const box=el('div','big');
+  const fr=el('div','frame'+(owned?' sharp':''));
+  fr.appendChild(el('div','spin'));
+  box.appendChild(fr);
+
+  const im=new Image();im.alt=c[1];im.decoding='async';
+  let posto=false;
+  const por=src=>{im.src=src;if(!posto){posto=true;fr.appendChild(im);}};
+  getImg(imgUrl(c[2],c[3])).then(u=>{if(!im.src)por(u);}).catch(()=>{});
+  const hi=new Image();
+  hi.onload=()=>por(hi.src);
+  hi.src=IMG_BASE+c[2]+'/'+encodeURIComponent(c[3])+'_hires.png';
+
+  box.appendChild(el('h4',null,c[1]));
+  box.appendChild(el('div','meta',setRef(c)+(c[4]?' · '+c[4]:'')));
+  box.appendChild(el('div','state'+(owned?' on':''),owned?'Na sua coleção':'Ainda falta'));
+  return box;
+}
+
+/* ---- carta de um espaço do binder: ampliar e confirmar ---- */
+function cardSheet(b,sl){
+  const c=BY_KEY.get(sl.c);
+  if(!c)return;
+  const owned=!!b.owned[sl.s];
+  const ok=el('button','btn'+(owned?' warn':' have'),
+    owned?'Remover da coleção':'Adicionar à coleção');
+  const ft=el('div','sheet-ft');ft.appendChild(ok);
+  openSheet(dexName(sl.p),bd=>{
+    bd.appendChild(bigCard(c,owned));
+    bd.appendChild(el('p','note',owned
+      ?'Você marcou esta carta como sua. Remover deixa o espaço vazio de novo.'
+      :'Só para ver a arte? É só fechar — nada muda até você confirmar aqui embaixo.'));
+  },ft);
+  ok.onclick=()=>{
+    if(owned)delete b.owned[sl.s];else b.owned[sl.s]=1;
+    save();closeSheet();render();
+    toast(owned?`${c[1]} removida da coleção`:`${c[1]} adicionada à coleção`);
+  };
+}
+
 /* ---- escolher qual versão preenche um espaço ---- */
 function cardRow(c,extra){
   const r=el('button','row');
@@ -911,8 +970,9 @@ function versionSheet(o){
   openSheet(o.title,bd=>{
     if(o.current){
       const cur=BY_KEY.get(o.current);
-      bd.appendChild(el('p','note',cur?`Preenchido com: ${cur[1]} — ${setLabel(cur)}`:'Preenchido.'));
+      if(cur)bd.appendChild(bigCard(cur,true));
       const rm=el('button','btn warn',o.clearLabel);
+      rm.style.marginTop='16px';
       rm.onclick=()=>{o.onClear();save();closeSheet();render();};
       bd.appendChild(rm);
       bd.appendChild(el('p','note','Ou escolha outra versão abaixo para trocar.'));
