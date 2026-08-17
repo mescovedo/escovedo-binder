@@ -213,6 +213,7 @@ input:focus-visible,button:focus-visible,.pocket:focus-visible{outline:2px solid
 
 <script>
 'use strict';
+const APP_VERSION='2026.08.17-2';
 const IMG_BASE='https://images.pokemontcg.io/';
 const PER_PAGE=9;
 const $=s=>document.querySelector(s);
@@ -317,6 +318,17 @@ function menu(v){
     +(S.binders.length?` · <b>${cardsHave}</b> de ${cards} cartas em ${S.binders.length} binder${S.binders.length>1?'s':''}`:'');
   hero.appendChild(st);
   v.appendChild(hero);
+
+  const marks=dexHave+cardsHave;
+  const days=S.lastBackup?Math.floor((Date.now()-S.lastBackup)/864e5):null;
+  if(marks>=10&&(days===null||days>=14)){
+    const w=el('div','stat');
+    w.style.cssText='margin:-6px 0 18px;padding:11px 13px;border-radius:11px;border:1px solid rgba(255,182,72,.35);color:var(--act);font-size:13px';
+    w.textContent=days===null
+      ?'Você ainda não exportou nenhum backup. Ajustes ⋯ → Exportar backup.'
+      :`Seu último backup tem ${days} dias. Ajustes ⋯ → Exportar backup.`;
+    v.appendChild(w);
+  }
 
   const tiles=el('div','tiles');
 
@@ -577,10 +589,11 @@ $('#menu').onclick=()=>{
     }
     const ex=el('button','btn ghost','Exportar backup (.json)');
     ex.onclick=()=>{
+      S.lastBackup=Date.now();save();
       const blob=new Blob([JSON.stringify(S)],{type:'application/json'});
       const a=el('a');a.href=URL.createObjectURL(blob);
-      a.download='binder-backup-'+new Date().toISOString().slice(0,10)+'.json';
-      a.click();toast('Backup gerado');
+      a.download='escovedo-binder-'+new Date().toISOString().slice(0,10)+'.json';
+      a.click();toast('Backup gerado — guarde o arquivo fora do celular');
     };
     bd.appendChild(ex);
 
@@ -597,6 +610,23 @@ $('#menu').onclick=()=>{
     };
     bd.append(im,f);
     bd.appendChild(el('p','note','Tudo fica só neste celular. Exporte de vez em quando e guarde o arquivo — se você limpar os dados do navegador ou trocar de aparelho, é o backup que salva sua coleção.'));
+
+    const upd=el('button','btn ghost','Buscar atualização');
+    upd.onclick=async()=>{
+      upd.disabled=true;upd.textContent='Procurando…';
+      try{
+        if('serviceWorker' in navigator){
+          const reg=await navigator.serviceWorker.getRegistration();
+          if(reg)await reg.update();
+        }
+        for(const k of await caches.keys())await caches.delete(k);
+        toast('Recarregando com a versão nova');
+        setTimeout(()=>location.reload(),700);
+      }catch(e){upd.disabled=false;upd.textContent='Buscar atualização';toast('Sem internet agora');}
+    };
+    bd.appendChild(upd);
+    const vs=el('p','note',`Versão ${APP_VERSION}. O app se atualiza sozinho quando você abre com internet — este botão é para forçar na hora.`);
+    bd.appendChild(vs);
 
     if(route.name==='binder'){
       const b=S.binders.find(x=>x.id===route.id);
@@ -646,8 +676,18 @@ async function downloadImages(btn){
     $('#boot').classList.add('hide');
     $('#app').classList.remove('hide');
     render();
-    if('serviceWorker' in navigator&&location.protocol==='https:')
-      navigator.serviceWorker.register('sw.js').catch(()=>{});
+    if('serviceWorker' in navigator&&location.protocol==='https:'){
+      const had=!!navigator.serviceWorker.controller;
+      let reloading=false;
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{
+        if(!had||reloading)return;      // primeira instalacao nao recarrega
+        reloading=true;location.reload();
+      });
+      navigator.serviceWorker.register('sw.js').then(reg=>{
+        reg.update().catch(()=>{});
+        setInterval(()=>reg.update().catch(()=>{}),60*60*1000);
+      }).catch(()=>{});
+    }
   }catch(e){
     $('#boot').innerHTML='<div style="max-width:340px"><b style="color:#e8ecf6">Não consegui carregar a base de cartas.</b>'
       +'<p class="note">O app precisa dos arquivos em <code>data/</code> ao lado do index.html, servidos por http(s). '
