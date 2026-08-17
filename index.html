@@ -7,6 +7,7 @@
 <title>Escovedo Binder</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{
   --ink:#101728;          /* capa do binder */
@@ -98,6 +99,7 @@ main{padding:var(--pad);max-width:640px;margin:0 auto}
   width:100%;padding:15px;border-radius:14px;border:1px dashed rgba(255,255,255,.22);
   color:var(--dim);font-weight:500;
 }
+.acoes{display:flex;flex-direction:column;gap:10px;margin-top:18px}
 .newb:active{color:var(--text);border-color:var(--act)}
 
 /* ---------- filtros / paginacao ---------- */
@@ -286,7 +288,7 @@ input:focus-visible,button:focus-visible,.pocket:focus-visible{outline:2px solid
 
 <script>
 'use strict';
-const APP_VERSION='2026.08.17-6';
+const APP_VERSION='2026.08.17-7';
 const IMG_BASE='https://images.pokemontcg.io/';
 const PER_PAGE=9;
 const $=s=>document.querySelector(s);
@@ -473,6 +475,7 @@ function render(){
   if(route.name==='binder')return binderView(v,route.id);
   if(route.name==='config')return config(v);
   if(route.name==='track'){
+    if(route.id==='dex')return trackView(v,'dex');
     const b=S.binders.find(x=>x.id===route.id);
     if(!b)return go({name:'list'});
     return trackView(v,b);
@@ -497,13 +500,15 @@ function config(v){
     dl.onclick=()=>downloadImages(dl,from);
     box.appendChild(dl);
     box.appendChild(el('p','k','Deixe rodando no Wi-Fi. Depois abre sem internet.'));
+    const tr=el('button','btn ghost','Rastrear coleções');
+    tr.onclick=()=>go({name:'track',id:b?b.id:'dex',from:from});
+    box.appendChild(tr);
+    box.appendChild(el('p','k',b
+      ?'Quantas cartas de cada coleção ainda faltam neste binder.'
+      :'Quantos Pokémon inéditos cada coleção pode te dar.'));
     if(b){
       const nums=dexNumsIn(b);
       if(nums.length){
-        const tr=el('button','btn ghost','Rastrear coleções');
-        tr.onclick=()=>go({name:'track',id:b.id,from:from});
-        box.appendChild(tr);
-        box.appendChild(el('p','k','Quantas cartas de cada coleção ainda faltam neste binder.'));
         const rm=el('button','btn ghost','Remover um Pokémon do binder');
         rm.onclick=()=>removePokemonSheet(b);
         box.appendChild(rm);
@@ -590,37 +595,57 @@ function config(v){
    Para cada coleção, quantas cartas dela ainda faltam neste binder.
    Serve para decidir se vale comprar um pacote antigo, e para medir
    o quanto uma coleção recém-lançada acrescenta ao binder.          */
+/* Pokédex: o que interessa é quantos Pokémon INÉDITOS a coleção pode dar
+   (cinco cartas do mesmo Pikachu ainda preenchem um só espaço).
+   Binder comum: o que interessa é quantas CARTAS ainda faltam.        */
 function trackSets(b){
-  const tenho=new Set();
-  for(const sl of binderSlots(b)){
-    if(sl.a){if(sl.c)tenho.add(sl.c);}
-    else if(b.owned[sl.s])tenho.add(sl.c);
-  }
-  const comEspaco=new Set(binderSlots(b).filter(x=>!x.a&&x.c).map(x=>x.c));
-  const nums=[...new Set(binderSlots(b).map(x=>x.p))];
-
+  const isDex=b==='dex';
   const porSet=new Map();
-  for(const n of nums)for(const c of cardsOf(n)){
-    if(tenho.has(c[0]))continue;
-    if(!porSet.has(c[2]))porSet.set(c[2],[]);
-    porSet.get(c[2]).push(c);
+  let comEspaco;
+
+  if(isDex){
+    comEspaco=null;
+    for(const [n] of DEX){
+      if(S.dex[n])continue;
+      for(const c of cardsOf(n)){
+        if(!porSet.has(c[2]))porSet.set(c[2],[]);
+        porSet.get(c[2]).push(c);
+      }
+    }
+  }else{
+    const tenho=new Set();
+    for(const sl of binderSlots(b)){
+      if(sl.a){if(sl.c)tenho.add(sl.c);}
+      else if(b.owned[sl.s])tenho.add(sl.c);
+    }
+    comEspaco=new Set(binderSlots(b).filter(x=>!x.a&&x.c).map(x=>x.c));
+    for(const n of [...new Set(binderSlots(b).map(x=>x.p))])
+      for(const c of cardsOf(n)){
+        if(tenho.has(c[0]))continue;
+        if(!porSet.has(c[2]))porSet.set(c[2],[]);
+        porSet.get(c[2]).push(c);
+      }
   }
+
   const linhas=[...porSet.entries()].map(([sid,cs])=>({
     sid,cs,
-    vazios:cs.filter(c=>comEspaco.has(c[0])).length,
+    peso:isDex?new Set(cs.flatMap(c=>c[5])).size:cs.length,
+    vazios:comEspaco?cs.filter(c=>comEspaco.has(c[0])).length:0,
     data:(SETS[sid]||[])[2]||''
   }));
-  return {linhas,comEspaco};
+  return {linhas,comEspaco,isDex};
 }
 
 function trackView(v,b){
+  const {linhas,comEspaco,isDex}=trackSets(b);
   $('#title').textContent='Rastrear coleções';
   $('#back').classList.remove('hide');
   $('#sub').classList.add('hide');
 
-  const {linhas,comEspaco}=trackSets(b);
   if(!linhas.length){
-    v.appendChild(el('div','empty','Nada faltando neste binder. Coleção completa.'));
+    v.appendChild(el('div','empty',isDex
+      ?'Você já tem todos os Pokémon da Pokédex.'
+      :'Nada faltando neste binder. Coleção completa.'));
     return;
   }
 
@@ -637,10 +662,11 @@ function trackView(v,b){
 
   linhas.sort((a,b2)=>(trackView.ord==='novo')
     ? b2.data.localeCompare(a.data)
-    : b2.cs.length-a.cs.length||b2.data.localeCompare(a.data));
+    : b2.peso-a.peso||b2.data.localeCompare(a.data));
 
-  const totalF=linhas.reduce((a,l)=>a+l.cs.length,0);
-  v.appendChild(el('p','note',`${totalF} cartas faltando, espalhadas por ${linhas.length} coleções. Toque numa coleção para ver quais.`));
+  v.appendChild(el('p','note',isDex
+    ? `${linhas[0].peso} Pokémon inéditos na coleção mais generosa, entre ${linhas.length} coleções. Toque para ver quais.`
+    : `${linhas.reduce((a,l)=>a+l.peso,0)} cartas faltando, espalhadas por ${linhas.length} coleções. Toque numa coleção para ver quais.`));
 
   const shelf=el('div','shelf');shelf.style.marginTop='12px';
   linhas.forEach(l=>{
@@ -648,9 +674,10 @@ function trackView(v,b){
     const row=el('button','binder');
     row.style.paddingLeft='16px';
     row.appendChild(el('div','t',st[0]));
-    row.appendChild(el('div','s',
-      `${l.cs.length} carta${l.cs.length>1?'s':''} faltando · ${fmtDate(l.data)}`
-      +(l.vazios?` · ${l.vazios} com espaço no binder`:'')));
+    row.appendChild(el('div','s',isDex
+      ? `${l.peso} Pokémon inédito${l.peso>1?'s':''} · ${l.cs.length} carta${l.cs.length>1?'s':''} · ${fmtDate(l.data)}`
+      : `${l.peso} carta${l.peso>1?'s':''} faltando · ${fmtDate(l.data)}`
+        +(l.vazios?` · ${l.vazios} com espaço no binder`:'')));
     row.onclick=()=>trackSetSheet(b,l,comEspaco);
     shelf.appendChild(row);
   });
@@ -660,16 +687,23 @@ function trackView(v,b){
 function trackSetSheet(b,l,comEspaco){
   const st=SETS[l.sid]||['?'];
   openSheet(st[0],bd=>{
-    bd.appendChild(el('p','note',`${l.cs.length} carta${l.cs.length>1?'s':''} desta coleção que ainda falta${l.cs.length>1?'m':''} no binder.`));
+    bd.appendChild(el('p','note',comEspaco
+      ? `${l.cs.length} carta${l.cs.length>1?'s':''} desta coleção que ainda falta${l.cs.length>1?'m':''} no binder.`
+      : `${l.peso} Pokémon que você ainda não tem na Pokédex, em ${l.cs.length} carta${l.cs.length>1?'s':''} desta coleção.`));
     l.cs.forEach(c=>{
-      const tag=el('div','tick',comEspaco.has(c[0])?'□':'+');
-      tag.style.cssText='color:'+(comEspaco.has(c[0])?'var(--act)':'var(--dim)')+';font-size:15px';
-      tag.title=comEspaco.has(c[0])?'espaço vazio no binder':'ainda não está no binder';
+      let tag=null;
+      if(comEspaco){
+        const dentro=comEspaco.has(c[0]);
+        tag=el('div','tick',dentro?'□':'+');
+        tag.style.cssText='color:'+(dentro?'var(--act)':'var(--dim)')+';font-size:15px';
+        tag.title=dentro?'espaço vazio no binder':'ainda não está no binder';
+      }
       const r=cardRow(c,tag);
       r.onclick=()=>bigSheet(c);
       bd.appendChild(r);
     });
-    bd.appendChild(el('p','note','□ espaço vazio esperando a carta · + carta que ainda não tem espaço no binder'));
+    if(comEspaco)
+      bd.appendChild(el('p','note','□ espaço vazio esperando a carta · + carta que ainda não tem espaço no binder'));
   });
 }
 
@@ -991,12 +1025,18 @@ function binderView(v,id){
     v.appendChild(pager(pages));
   }
 
+  const acoes=el('div','acoes');
   if(!isDex){
     const add=el('button','newb','+  Adicionar Pokémon');
-    add.style.marginTop='16px';
     add.onclick=()=>pickPokemon(n=>howToCollect(b,n));
-    v.appendChild(add);
+    acoes.appendChild(add);
   }
+  if(total){
+    const tr=el('button','newb','⌕  Rastrear coleções');
+    tr.onclick=()=>go({name:'track',id:isDex?'dex':b.id,from:route});
+    acoes.appendChild(tr);
+  }
+  if(acoes.children.length)v.appendChild(acoes);
 }
 
 function pocket(s,isDex,b){
