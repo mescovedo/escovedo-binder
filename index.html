@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101728">
+<title>Escovedo Binder</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<style>
+:root{
+  --ink:#101728;          /* capa do binder */
+  --ink-2:#18213a;        /* painel */
+  --pocket:#1e2946;       /* bolso vazio */
+  --edge:rgba(255,255,255,.09);
+  --text:#e8ecf6;
+  --dim:#8a95b2;
+  --have:#3ddc97;         /* tenho */
+  --act:#ffb648;          /* acao */
+  --danger:#ff6b6b;
+  --pad:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:var(--ink);color:var(--text);
+  font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overscroll-behavior-y:contain;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.hide{display:none!important}
+
+/* ---------- topo ---------- */
+header{
+  position:sticky;top:0;z-index:20;background:rgba(16,23,40,.92);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--edge);
+  padding:calc(env(safe-area-inset-top) + 10px) var(--pad) 10px;
+}
+.bar{display:flex;align-items:center;gap:12px;min-height:34px}
+.bar h1{
+  margin:0;font-size:19px;font-weight:650;letter-spacing:-.01em;
+  flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.icon{
+  width:34px;height:34px;flex:none;display:grid;place-items:center;
+  border-radius:10px;border:1px solid var(--edge);font-size:17px;line-height:1;
+}
+.icon:active{background:var(--ink-2)}
+
+/* ---------- progresso ---------- */
+.prog{height:3px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden}
+.prog i{display:block;height:100%;background:var(--have);transition:width .3s}
+.count{font-variant-numeric:tabular-nums;color:var(--dim);font-size:13px}
+
+main{padding:var(--pad);max-width:640px;margin:0 auto}
+
+/* ---------- menu ---------- */
+.hero{padding:34px 2px 26px;border-bottom:1px solid var(--edge);margin-bottom:22px}
+.hero .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--act);font-weight:600}
+.hero h2{
+  margin:10px 0 0;font-size:clamp(30px,9vw,40px);font-weight:750;
+  letter-spacing:-.035em;line-height:1.02;
+}
+.hero h2 span{display:block;color:var(--dim);font-weight:350}
+.hero .stat{margin-top:18px;font-size:14px;color:var(--dim);font-variant-numeric:tabular-nums}
+.hero .stat b{color:var(--have);font-weight:650}
+.tiles{display:flex;flex-direction:column;gap:12px}
+.tile{
+  display:flex;align-items:center;gap:16px;width:100%;text-align:left;
+  padding:20px 18px;border-radius:16px;background:var(--ink-2);
+  border:1px solid var(--edge);position:relative;
+}
+.tile:active{transform:scale(.99);border-color:var(--act)}
+.tile .g{
+  width:46px;height:46px;flex:none;border-radius:12px;background:var(--pocket);
+  display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:6px;
+}
+.tile .g i{background:rgba(255,255,255,.14);border-radius:2px}
+.tile .g i.k{background:var(--have)}
+.tile .g.plus{place-items:center;display:grid;grid-template-columns:1fr;font-size:24px;color:var(--act);padding:0}
+.tile .l b{display:block;font-size:17px;font-weight:600;margin-bottom:2px}
+.tile .l small{color:var(--dim);font-size:13px}
+.tile .go{margin-left:auto;color:var(--dim);font-size:20px}
+
+/* ---------- lista de binders ---------- */
+.shelf{display:flex;flex-direction:column;gap:10px}
+.binder{
+  display:block;width:100%;text-align:left;padding:15px 16px;border-radius:14px;
+  background:var(--ink-2);border:1px solid var(--edge);position:relative;overflow:hidden;
+}
+.binder:active{transform:scale(.99)}
+.binder::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--act)}
+.binder.dex::before{background:var(--have)}
+.binder .t{font-size:17px;font-weight:600;margin-bottom:3px}
+.binder .s{font-size:13px;color:var(--dim);margin-bottom:10px}
+.newb{
+  width:100%;padding:15px;border-radius:14px;border:1px dashed rgba(255,255,255,.22);
+  color:var(--dim);font-weight:500;
+}
+.newb:active{color:var(--text);border-color:var(--act)}
+
+/* ---------- filtros / paginacao ---------- */
+.chips{display:flex;gap:8px;margin:0 0 14px}
+.chip{
+  padding:7px 14px;border-radius:999px;border:1px solid var(--edge);
+  font-size:14px;color:var(--dim);
+}
+.chip[aria-pressed=true]{background:var(--text);color:var(--ink);border-color:var(--text);font-weight:600}
+.pager{display:flex;align-items:center;justify-content:center;gap:16px;margin:16px 0 4px}
+.pager span{font-variant-numeric:tabular-nums;font-size:14px;color:var(--dim);min-width:130px;text-align:center}
+.pager button{width:40px;height:40px;border-radius:12px;border:1px solid var(--edge);font-size:18px}
+.pager button:disabled{opacity:.25}
+
+/* ---------- a pagina do binder (assinatura) ---------- */
+.page{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+  padding:10px;border-radius:14px;background:var(--ink-2);border:1px solid var(--edge);
+}
+.pocket{
+  position:relative;aspect-ratio:63/88;border-radius:8px;overflow:hidden;
+  background:var(--pocket);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), inset 0 -8px 18px rgba(0,0,0,.28);
+  display:grid;place-items:center;text-align:center;padding:6px;
+}
+.pocket img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.pocket .num{
+  font-size:clamp(20px,7vw,30px);font-weight:800;letter-spacing:-.04em;
+  font-variant-numeric:tabular-nums;color:rgba(255,255,255,.16);line-height:1;
+}
+.pocket .nm{
+  font-size:10px;color:var(--dim);margin-top:5px;line-height:1.2;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+}
+.pocket.on{box-shadow:inset 0 0 0 2px var(--have)}
+.pocket.on::after{
+  content:"";position:absolute;right:5px;bottom:5px;width:9px;height:9px;border-radius:50%;
+  background:var(--have);box-shadow:0 0 0 2px rgba(16,23,40,.75)
+}
+.pocket:active{filter:brightness(1.15)}
+.empty{padding:40px 10px;text-align:center;color:var(--dim);font-size:14px}
+
+/* ---------- bottom sheet ---------- */
+.sheet{
+  position:fixed;inset:0;z-index:40;background:rgba(6,9,18,.6);
+  display:flex;align-items:flex-end;justify-content:center;
+}
+.sheet-in{
+  width:100%;max-width:640px;max-height:88vh;background:var(--ink-2);
+  border-radius:18px 18px 0 0;border-top:1px solid var(--edge);
+  display:flex;flex-direction:column;animation:up .22s ease-out;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+@keyframes up{from{transform:translateY(100%)}}
+@media (prefers-reduced-motion:reduce){.sheet-in{animation:none}}
+.sheet-hd{
+  padding:16px var(--pad) 12px;border-bottom:1px solid var(--edge);
+  display:flex;align-items:center;gap:12px;flex:none;
+}
+.sheet-hd b{flex:1;font-size:16px;font-weight:600}
+.sheet-bd{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:var(--pad)}
+input[type=text],input[type=search]{
+  width:100%;padding:12px 14px;border-radius:11px;background:var(--pocket);
+  border:1px solid var(--edge);color:var(--text);font:inherit;
+}
+input:focus-visible,button:focus-visible,.pocket:focus-visible{outline:2px solid var(--act);outline-offset:2px}
+.btn{
+  display:block;width:100%;padding:13px;border-radius:11px;text-align:center;
+  font-weight:600;background:var(--act);color:#241703;margin-top:10px;
+}
+.btn.ghost{background:transparent;border:1px solid var(--edge);color:var(--text)}
+.btn.warn{background:transparent;border:1px solid var(--danger);color:var(--danger)}
+.btn:disabled{opacity:.5}
+
+/* resultados de busca */
+.row{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:11px 4px;border-bottom:1px solid var(--edge);
+}
+.row .th{width:40px;height:56px;border-radius:5px;background:var(--pocket);flex:none;object-fit:cover}
+.row .m{flex:1;min-width:0}
+.row .m b{display:block;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .m small{color:var(--dim);font-size:12.5px}
+.row .tick{color:var(--have);font-size:18px}
+.note{color:var(--dim);font-size:13px;line-height:1.5;margin:10px 0 0}
+.toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;
+  background:var(--text);color:var(--ink);padding:11px 18px;border-radius:999px;
+  font-size:14px;font-weight:600;box-shadow:0 8px 28px rgba(0,0,0,.45);max-width:88vw;text-align:center;
+}
+.boot{display:grid;place-items:center;height:70vh;color:var(--dim);gap:14px;text-align:center;padding:20px}
+.spin{width:26px;height:26px;border:3px solid var(--edge);border-top-color:var(--act);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<div id="boot" class="boot"><div class="spin"></div><div>Carregando as cartas…</div></div>
+<div id="app" class="hide">
+  <header>
+    <div class="bar">
+      <button id="back" class="icon hide" aria-label="Voltar">‹</button>
+      <h1 id="title">Escovedo Binder</h1>
+      <button id="menu" class="icon" aria-label="Ajustes">⋯</button>
+    </div>
+    <div id="sub" class="hide" style="margin-top:9px">
+      <div class="prog"><i id="bar"></i></div>
+      <div id="cnt" class="count" style="margin-top:5px"></div>
+    </div>
+  </header>
+  <main id="view"></main>
+</div>
+
+<script>
+'use strict';
+const IMG_BASE='https://images.pokemontcg.io/';
+const PER_PAGE=9;
+const $=s=>document.querySelector(s);
+const el=(t,c,x)=>{const e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;};
+
+/* ================= armazenamento local (IndexedDB) ================= */
+let db;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open('binder',1);
+    r.onupgradeneeded=()=>{const d=r.result;
+      if(!d.objectStoreNames.contains('kv'))d.createObjectStore('kv');
+      if(!d.objectStoreNames.contains('img'))d.createObjectStore('img');};
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  });
+}
+const idb=(store,mode,fn)=>new Promise((res,rej)=>{
+  const t=db.transaction(store,mode),q=fn(t.objectStore(store));
+  q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);
+});
+const kvGet=k=>idb('kv','readonly',s=>s.get(k));
+const kvPut=(k,v)=>idb('kv','readwrite',s=>s.put(v,k));
+
+/* ================= estado ================= */
+let CARDS=[],SETS={},DEX=[],BY_DEX=new Map(),BY_KEY=new Map();
+let S={v:1,dex:{},binders:[]};
+let saveT;
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>kvPut('state',S).catch(()=>toast('Não consegui salvar')),250);}
+
+/* ================= imagens: baixa uma vez, guarda pra sempre ================= */
+const memo=new Map();
+let corsOK=true;
+function imgUrl(setId,number){return IMG_BASE+setId+'/'+encodeURIComponent(number)+'.png';}
+async function getImg(url){
+  if(memo.has(url))return memo.get(url);
+  const p=(async()=>{
+    try{
+      const hit=await idb('img','readonly',s=>s.get(url));
+      if(hit)return URL.createObjectURL(hit);
+    }catch(e){}
+    if(!corsOK)return url;
+    try{
+      const r=await fetch(url,{mode:'cors'});
+      if(!r.ok)throw 0;
+      const b=await r.blob();
+      idb('img','readwrite',s=>s.put(b,url)).catch(()=>{});
+      return URL.createObjectURL(b);
+    }catch(e){corsOK=false;return url;}
+  })();
+  memo.set(url,p);return p;
+}
+function paint(node,setId,number){
+  getImg(imgUrl(setId,number)).then(src=>{
+    if(!node.isConnected)return;
+    const im=new Image();im.decoding='async';im.alt='';
+    im.onload=()=>{if(node.isConnected){node.querySelectorAll('img').forEach(x=>x.remove());node.appendChild(im);}};
+    im.src=src;
+  });
+}
+
+/* ================= dados derivados ================= */
+function cardsOf(dexNum){return BY_DEX.get(dexNum)||[];}
+function setLabel(c){const s=SETS[c[2]];return s?s[0]+' · '+c[3]:c[3];}
+function binderCards(b){
+  const out=[];const seen=new Set();
+  for(const n of b.pokemon)for(const c of cardsOf(n))if(!seen.has(c[0])){seen.add(c[0]);out.push(c);}
+  return out;
+}
+
+/* ================= navegacao ================= */
+let route={name:'menu'};
+const BACK={list:'menu',dex:'list',binder:'list'};
+function go(r){route=r;render();window.scrollTo(0,0);}
+$('#back').onclick=()=>go({name:BACK[route.name]||'menu'});
+window.addEventListener('popstate',()=>{if(route.name!=='menu')go({name:BACK[route.name]||'menu'});});
+
+/* ================= telas ================= */
+function render(){
+  const v=$('#view');v.innerHTML='';
+  if(route.name==='menu')return menu(v);
+  if(route.name==='list')return binderList(v);
+  if(route.name==='dex')return binderView(v,'dex');
+  if(route.name==='binder')return binderView(v,route.id);
+}
+
+function menu(v){
+  $('#title').textContent='Escovedo Binder';
+  $('#back').classList.add('hide');
+  $('#sub').classList.add('hide');
+
+  const dexHave=Object.keys(S.dex).length;
+  let cards=0,cardsHave=0;
+  for(const b of S.binders){const cs=binderCards(b);cards+=cs.length;cardsHave+=cs.filter(c=>b.owned[c[0]]).length;}
+
+  const hero=el('div','hero');
+  hero.appendChild(el('div','eyebrow','Coleção Pokémon'));
+  const h=el('h2');h.appendChild(document.createTextNode('Escovedo'));
+  h.appendChild(el('span',null,'Binder'));
+  hero.appendChild(h);
+  const st=el('div','stat');
+  st.innerHTML=`<b>${dexHave}</b> de 1025 Pokémon na Pokédex`
+    +(S.binders.length?` · <b>${cardsHave}</b> de ${cards} cartas em ${S.binders.length} binder${S.binders.length>1?'s':''}`:'');
+  hero.appendChild(st);
+  v.appendChild(hero);
+
+  const tiles=el('div','tiles');
+
+  const t1=el('button','tile');
+  const g1=el('div','g');
+  [0,1,2,3,4,5,6,7,8].forEach(i=>{const c=el('i');if(i===4||i===0||i===7)c.classList.add('k');g1.appendChild(c);});
+  const l1=el('div','l');
+  l1.appendChild(el('b',null,'Ver seus binders'));
+  l1.appendChild(el('small',null,`Pokédex Nacional${S.binders.length?` e mais ${S.binders.length}`:''}`));
+  t1.append(g1,l1,el('div','go','›'));
+  t1.onclick=()=>go({name:'list'});
+
+  const t2=el('button','tile');
+  const g2=el('div','g plus');g2.appendChild(el('span',null,'+'));
+  const l2=el('div','l');
+  l2.appendChild(el('b',null,'Novo binder'));
+  l2.appendChild(el('small',null,'Escolha os Pokémon, o app traz as cartas'));
+  t2.append(g2,l2,el('div','go','›'));
+  t2.onclick=newBinder;
+
+  tiles.append(t1,t2);
+  v.appendChild(tiles);
+}
+
+function binderList(v){
+  $('#title').textContent='Meus binders';
+  $('#back').classList.remove('hide');
+  $('#sub').classList.add('hide');
+
+  const shelf=el('div','shelf');
+  const have=Object.keys(S.dex).length;
+  shelf.appendChild(binderRow('Pokédex Nacional',
+    have+' de 1025 Pokémon',have/1025,true,()=>go({name:'dex'})));
+
+  for(const b of S.binders){
+    const cs=binderCards(b),n=cs.filter(c=>b.owned[c[0]]).length;
+    shelf.appendChild(binderRow(b.name,
+      cs.length?`${n} de ${cs.length} cartas`:'Vazio — toque para adicionar um Pokémon',
+      cs.length?n/cs.length:0,false,()=>go({name:'binder',id:b.id})));
+  }
+  v.appendChild(shelf);
+
+  const nb=el('button','newb','+  Novo binder');
+  nb.style.marginTop='10px';
+  nb.onclick=newBinder;
+  v.appendChild(nb);
+}
+function binderRow(title,sub,pct,isDex,onclick){
+  const b=el('button','binder'+(isDex?' dex':''));
+  b.appendChild(el('div','t',title));
+  b.appendChild(el('div','s',sub));
+  const p=el('div','prog'),i=el('i');i.style.width=(pct*100).toFixed(1)+'%';
+  p.appendChild(i);b.appendChild(p);b.onclick=onclick;return b;
+}
+
+/* ---- estado de visualizacao do binder ---- */
+const viewState={filter:'all',page:0};
+
+function binderView(v,id){
+  const isDex=id==='dex';
+  const b=isDex?null:S.binders.find(x=>x.id===id);
+  if(!isDex&&!b)return go({name:'list'});
+
+  $('#back').classList.remove('hide');
+  $('#sub').classList.remove('hide');
+  $('#title').textContent=isDex?'Pokédex Nacional':b.name;
+
+  // monta os slots
+  let slots;
+  if(isDex) slots=DEX.map(([n,nm])=>({dex:n,name:nm,on:!!S.dex[n],key:S.dex[n]}));
+  else slots=binderCards(b).map(c=>({card:c,on:!!b.owned[c[0]],key:c[0]}));
+
+  const total=slots.length,owned=slots.filter(s=>s.on).length;
+  $('#bar').style.width=(total?owned/total*100:0).toFixed(1)+'%';
+  $('#cnt').textContent=`${owned} de ${total}`+(isDex?' Pokémon':' cartas');
+
+  // filtro
+  const chips=el('div','chips');
+  [['all','Todos'],['have','Tenho'],['miss','Falta']].forEach(([k,lbl])=>{
+    const c=el('button','chip',lbl);
+    c.setAttribute('aria-pressed',viewState.filter===k);
+    c.onclick=()=>{viewState.filter=k;viewState.page=0;render();};
+    chips.appendChild(c);
+  });
+  v.appendChild(chips);
+
+  const vis=slots.filter(s=>viewState.filter==='all'||(viewState.filter==='have')===s.on);
+
+  if(!vis.length){
+    v.appendChild(el('div','empty',
+      total===0?'Este binder está vazio.':
+      viewState.filter==='have'?'Você ainda não marcou nenhuma carta aqui.':'Nada faltando. Binder completo.'));
+  }else{
+    const pages=Math.ceil(vis.length/PER_PAGE);
+    viewState.page=Math.min(viewState.page,pages-1);
+    const page=el('div','page');
+    for(const s of vis.slice(viewState.page*PER_PAGE,viewState.page*PER_PAGE+PER_PAGE))
+      page.appendChild(pocket(s,isDex,b));
+    v.appendChild(page);
+    v.appendChild(pager(pages));
+  }
+
+  if(!isDex){
+    const add=el('button','newb','+  Adicionar Pokémon');
+    add.style.marginTop='16px';
+    add.onclick=()=>pickPokemon(n=>{
+      if(b.pokemon.includes(n))return toast('Esse Pokémon já está no binder');
+      b.pokemon.push(n);save();closeSheet();viewState.page=0;render();
+      toast(`${cardsOf(n).length} cartas adicionadas`);
+    });
+    v.appendChild(add);
+  }
+}
+
+function pocket(s,isDex,b){
+  const p=el('button','pocket'+(s.on?' on':''));
+  p.setAttribute('aria-pressed',s.on);
+  if(isDex){
+    p.setAttribute('aria-label',`#${s.dex} ${s.name}`);
+    if(s.on&&s.key){
+      const c=BY_KEY.get(s.key);
+      if(c)paint(p,c[2],c[3]);
+    }else{
+      p.appendChild(el('div','num',String(s.dex).padStart(3,'0')));
+      p.appendChild(el('div','nm',s.name));
+    }
+    p.onclick=()=>dexSlot(s);
+  }else{
+    paint(p,s.card[2],s.card[3]);
+    p.setAttribute('aria-label',s.card[1]+' — '+setLabel(s.card));
+    if(!s.on)p.style.opacity='.45';
+    p.onclick=()=>{
+      if(b.owned[s.key])delete b.owned[s.key];else b.owned[s.key]=1;
+      save();render();
+    };
+  }
+  return p;
+}
+
+function pager(pages){
+  const w=el('div','pager');
+  const prev=el('button',null,'‹'),next=el('button',null,'›');
+  const lbl=el('span',null,`Página ${viewState.page+1} de ${pages}`);
+  prev.disabled=viewState.page===0;next.disabled=viewState.page>=pages-1;
+  prev.setAttribute('aria-label','Página anterior');next.setAttribute('aria-label','Próxima página');
+  prev.onclick=()=>{viewState.page--;render();};
+  next.onclick=()=>{viewState.page++;render();};
+  w.append(prev,lbl,next);return w;
+}
+
+/* ================= bottom sheet ================= */
+let sheetEl;
+function openSheet(title,build){
+  closeSheet();
+  sheetEl=el('div','sheet');
+  const inner=el('div','sheet-in');
+  const hd=el('div','sheet-hd');
+  hd.appendChild(el('b',null,title));
+  const x=el('button','icon','✕');x.setAttribute('aria-label','Fechar');x.onclick=closeSheet;
+  hd.appendChild(x);
+  const bd=el('div','sheet-bd');
+  inner.append(hd,bd);sheetEl.appendChild(inner);
+  sheetEl.onclick=e=>{if(e.target===sheetEl)closeSheet();};
+  document.body.appendChild(sheetEl);
+  build(bd);
+}
+function closeSheet(){if(sheetEl){sheetEl.remove();sheetEl=null;}}
+function toast(msg){
+  const t=el('div','toast',msg);document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2200);
+}
+
+/* ---- escolher qual carta preenche o slot da Pokédex ---- */
+function dexSlot(s){
+  const list=cardsOf(s.dex);
+  openSheet(`#${String(s.dex).padStart(3,'0')} ${s.name}`,bd=>{
+    if(s.on){
+      const cur=BY_KEY.get(s.key);
+      const info=el('p','note',cur?`Preenchido com: ${cur[1]} — ${setLabel(cur)}`:'Preenchido.');
+      bd.appendChild(info);
+      const rm=el('button','btn warn','Desmarcar este Pokémon');
+      rm.onclick=()=>{delete S.dex[s.dex];save();closeSheet();render();};
+      bd.appendChild(rm);
+      bd.appendChild(el('p','note','Ou escolha outra carta abaixo para trocar.'));
+    }else{
+      bd.appendChild(el('p','note',`${list.length} cartas deste Pokémon. Escolha qual você tem.`));
+    }
+    const wrap=el('div');bd.appendChild(wrap);
+    list.forEach(c=>{
+      const r=el('button','row');
+      const th=el('img','th');th.alt='';th.loading='lazy';
+      getImg(imgUrl(c[2],c[3])).then(u=>{th.src=u;});
+      const m=el('div','m');
+      m.appendChild(el('b',null,c[1]));
+      m.appendChild(el('small',null,setLabel(c)+(c[4]?' · '+c[4]:'')));
+      r.append(th,m);
+      if(s.key===c[0])r.appendChild(el('div','tick','✓'));
+      r.onclick=()=>{S.dex[s.dex]=c[0];save();closeSheet();render();};
+      wrap.appendChild(r);
+    });
+  });
+}
+
+/* ---- escolher um Pokémon ---- */
+function pickPokemon(onPick){
+  openSheet('Adicionar Pokémon',bd=>{
+    const inp=el('input');inp.type='search';inp.placeholder='Nome ou número da Pokédex';
+    bd.appendChild(inp);
+    const out=el('div');out.style.marginTop='8px';bd.appendChild(out);
+    const draw=q=>{
+      out.innerHTML='';
+      q=q.trim().toLowerCase();
+      const hits=DEX.filter(([n,nm])=>!q||nm.toLowerCase().includes(q)||String(n)===q).slice(0,60);
+      if(!hits.length){out.appendChild(el('p','note','Nenhum Pokémon com esse nome.'));return;}
+      hits.forEach(([n,nm])=>{
+        const r=el('button','row');
+        const m=el('div','m');
+        m.appendChild(el('b',null,nm));
+        m.appendChild(el('small',null,`#${String(n).padStart(3,'0')} · ${cardsOf(n).length} cartas`));
+        r.appendChild(m);
+        r.onclick=()=>onPick(n);
+        out.appendChild(r);
+      });
+    };
+    draw('');
+    let t;inp.oninput=()=>{clearTimeout(t);t=setTimeout(()=>draw(inp.value),140);};
+    setTimeout(()=>inp.focus(),80);
+  });
+}
+
+/* ---- novo binder ---- */
+function newBinder(){
+  openSheet('Novo binder',bd=>{
+    const inp=el('input');inp.type='text';inp.placeholder='Nome do binder';
+    bd.appendChild(inp);
+    bd.appendChild(el('p','note','Depois de criar, você escolhe os Pokémon e o app traz todas as cartas já lançadas de cada um.'));
+    const ok=el('button','btn','Criar binder');
+    ok.onclick=()=>{
+      const name=inp.value.trim();
+      if(!name)return toast('Dê um nome ao binder');
+      const b={id:'b'+Date.now(),name,pokemon:[],owned:{}};
+      S.binders.push(b);save();closeSheet();viewState.page=0;viewState.filter='all';
+      go({name:'binder',id:b.id});
+    };
+    bd.appendChild(ok);
+    setTimeout(()=>inp.focus(),80);
+  });
+}
+
+/* ================= ajustes / backup ================= */
+$('#menu').onclick=()=>{
+  openSheet('Ajustes',bd=>{
+    if(route.name==='dex'||route.name==='binder'){
+      const dl=el('button','btn','Baixar as imagens deste binder');
+      dl.onclick=()=>downloadImages(dl);
+      bd.appendChild(dl);
+      bd.appendChild(el('p','note','Deixe rodando no Wi-Fi. Depois o binder abre sem internet.'));
+    }
+    const ex=el('button','btn ghost','Exportar backup (.json)');
+    ex.onclick=()=>{
+      const blob=new Blob([JSON.stringify(S)],{type:'application/json'});
+      const a=el('a');a.href=URL.createObjectURL(blob);
+      a.download='binder-backup-'+new Date().toISOString().slice(0,10)+'.json';
+      a.click();toast('Backup gerado');
+    };
+    bd.appendChild(ex);
+
+    const im=el('button','btn ghost','Restaurar backup');
+    const f=el('input');f.type='file';f.accept='.json,application/json';f.style.display='none';
+    im.onclick=()=>f.click();
+    f.onchange=async()=>{
+      try{
+        const d=JSON.parse(await f.files[0].text());
+        if(!d||typeof d!=='object'||!Array.isArray(d.binders))throw 0;
+        S=Object.assign({v:1,dex:{},binders:[]},d);
+        await kvPut('state',S);closeSheet();go({name:'menu'});toast('Backup restaurado');
+      }catch(e){toast('Arquivo de backup inválido');}
+    };
+    bd.append(im,f);
+    bd.appendChild(el('p','note','Tudo fica só neste celular. Exporte de vez em quando e guarde o arquivo — se você limpar os dados do navegador ou trocar de aparelho, é o backup que salva sua coleção.'));
+
+    if(route.name==='binder'){
+      const b=S.binders.find(x=>x.id===route.id);
+      const del=el('button','btn warn','Excluir este binder');
+      del.onclick=()=>{
+        if(!confirm(`Excluir "${b.name}"? As marcações deste binder serão perdidas.`))return;
+        S.binders=S.binders.filter(x=>x.id!==b.id);save();closeSheet();go({name:'list'});
+      };
+      bd.appendChild(del);
+    }
+  });
+};
+
+async function downloadImages(btn){
+  const isDex=route.name==='dex';
+  let list;
+  if(isDex)list=Object.values(S.dex).map(k=>BY_KEY.get(k)).filter(Boolean);
+  else list=binderCards(S.binders.find(x=>x.id===route.id));
+  if(!list.length)return toast('Nada para baixar ainda');
+  btn.disabled=true;let done=0,fail=0;
+  for(const c of list){
+    try{await getImg(imgUrl(c[2],c[3]));}catch(e){fail++;}
+    done++;btn.textContent=`Baixando ${done} de ${list.length}…`;
+  }
+  btn.textContent='Imagens salvas neste celular';
+  toast(fail?`${done-fail} de ${list.length} baixadas`:`${done} imagens salvas`);
+}
+
+/* ================= arranque ================= */
+(async function boot(){
+  try{
+    db=await openDB();
+    const [raw,dex,st]=await Promise.all([
+      fetch('data/cards.json').then(r=>r.json()),
+      fetch('data/pokedex.json').then(r=>r.json()),
+      kvGet('state')
+    ]);
+    SETS=raw.sets;CARDS=raw.cards;DEX=dex;
+    for(const c of CARDS){
+      BY_KEY.set(c[0],c);
+      for(const n of c[5]){
+        if(!BY_DEX.has(n))BY_DEX.set(n,[]);
+        BY_DEX.get(n).push(c);
+      }
+    }
+    if(st)S=Object.assign(S,st);
+    $('#boot').classList.add('hide');
+    $('#app').classList.remove('hide');
+    render();
+    if('serviceWorker' in navigator&&location.protocol==='https:')
+      navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }catch(e){
+    $('#boot').innerHTML='<div style="max-width:340px"><b style="color:#e8ecf6">Não consegui carregar a base de cartas.</b>'
+      +'<p class="note">O app precisa dos arquivos em <code>data/</code> ao lado do index.html, servidos por http(s). '
+      +'Abrir o arquivo direto do celular não funciona — publique no GitHub Pages primeiro.</p></div>';
+  }
+})();
+</script>
+</body>
+</html>
